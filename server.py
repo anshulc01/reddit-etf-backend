@@ -14,9 +14,9 @@ CORS(app)
 # 1. SETUP REDDIT API
 # REPLACE THE PLACEHOLDERS BELOW WITH YOUR ACTUAL KEYS
 reddit = praw.Reddit(
-    client_id="o6Zs31tEtOrXylN63wLC2Q",         # Your 14-character client ID
-    client_secret="WDTefleTeB78pbJv-JXo49YE04tr4w", # Your 27-character client secret
-    user_agent="CanadianETF_Agent/1.0"
+    client_id="YOUR ID HERE",         # Your 14-character client ID
+    client_secret="YOUR SECRET HERE", # Your 27-character client secret
+    user_agent="AGENT NAME HERE"
 )    
 
 # 2. SETUP AI MODELS
@@ -305,4 +305,5 @@ def analyze():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+
     app.run(host='0.0.0.0', port=port)
