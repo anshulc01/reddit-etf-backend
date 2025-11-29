@@ -51,7 +51,7 @@ import {
 // --- CONFIGURATION ---
 // 1. Get your key here: https://aistudio.google.com/app/apikey
 // 2. PASTE IT BELOW inside the quotes (e.g., "AIzaSy...")
-const API_KEY = "AIzaSyBmWDE6_0vAjHTinkxFTQog_nQtPGQpHYQ";
+const API_KEY = "";
 
 // UPDATED: Using 2.5 Flash model (Faster, Lower Cost/Free Tier)
 const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
