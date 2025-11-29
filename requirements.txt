@@ -1,0 +1,8 @@
+flask
+flask-cors
+praw
+vaderSentiment
+transformers
+torch
+numpy
+gunicorn
