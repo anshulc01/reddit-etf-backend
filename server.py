@@ -2,7 +2,6 @@ import os
 import praw
 import re
 import numpy as np
-from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -17,7 +16,7 @@ reddit = praw.Reddit(
     client_id="YOUR ID HERE",         # Your 14-character client ID
     client_secret="YOUR SECRET HERE", # Your 27-character client secret
     user_agent="AGENT NAME HERE"
-)    
+)   
 
 # 2. SETUP AI MODELS
 print("Loading AI Models... (This takes time on startup)")
@@ -31,58 +30,6 @@ try:
 except Exception as e:
     print(f"Warning: Could not load FinBERT ({e}). Falling back to VADER only.")
     finbert_pipeline = None
-
-# --- SEMANTIC KNOWLEDGE BASE ---
-THEME_KNOWLEDGE_BASE = {
-    'AI & Automation': {
-        "keywords": ["AI", "Artificial Intelligence", "LLM", "Nvidia", "NVDA", "tech rally", "generative ai", "automation", "robotics"],
-        "context": "Tracks the technology sector momentum driven by AI adoption and capital expenditure."
-    },
-    'Canadian Housing': {
-        "keywords": ["housing market", "mortgage", "rent", "real estate", "variable rate", "fixed rate", "condo", "toronto housing", "vancouver housing"],
-        "context": "Focuses on the Canadian residential real estate market, mortgage rates, and affordability metrics."
-    },
-    'Interest Rates': {
-        "keywords": ["interest rates", "BoC", "Bank of Canada", "Fed", "rate hike", "rate cut", "inflation", "CPI", "bond yields", "yield curve"],
-        "context": "Monitors central bank policy, inflation data, and the cost of borrowing."
-    },
-    'Green Energy': {
-        "keywords": ["clean energy", "renewables", "solar", "wind", "nuclear", "uranium", "carbon tax", "EV", "energy transition"],
-        "context": "Covers the shift to renewable energy sources, government policy, and commodity inputs like Uranium."
-    },
-    'Semiconductors': {
-        "keywords": ["semiconductors", "chips", "TSMC", "AMD", "supply chain", "wafer", "silicon"],
-        "context": "Tracks the cyclical semiconductor industry, essential for tech hardware and AI infrastructure."
-    },
-    'Oil Prices': {
-        "keywords": ["oil", "crude", "WTI", "Brent", "OPEC", "energy sector", "suncor", "cnq", "pipelines"],
-        "context": "Analyzes energy commodities, producer profitability, and geopolitical supply constraints."
-    },
-    'Bank Dividends': {
-        "keywords": ["dividends", "big 5 banks", "payout ratio", "loan loss", "RY", "TD", "BMO", "yield"],
-        "context": "Focuses on the stability and growth of Canadian banking sector dividends."
-    },
-    'Crypto Regulation': {
-        "keywords": ["crypto", "bitcoin", "ethereum", "SEC", "OSC", "regulation", "coinbase", "ETF approval"],
-        "context": "Monitors the regulatory environment for digital assets and institutional adoption."
-    },
-    'Recession Fears': {
-        "keywords": ["recession", "soft landing", "hard landing", "GDP", "unemployment", "jobs report", "economic slowdown"],
-        "context": "Tracks macroeconomic indicators signaling potential economic contraction."
-    },
-    'Consumer Spending': {
-        "keywords": ["consumer spending", "retail sales", "debt", "credit card", "inflation", "cost of living", "groceries"],
-        "context": "Analyzes the health of the consumer, discretionary income, and retail trends."
-    },
-    'Supply Chains': {
-        "keywords": ["supply chain", "shipping", "freight", "logistics", "rail", "CN rail", "CP rail", "port strike"],
-        "context": "Monitors the movement of goods, transportation costs, and logistical bottlenecks."
-    },
-    'ESG Investing': {
-        "keywords": ["ESG", "sustainable investing", "governance", "social responsibility", "green bonds", "divestment"],
-        "context": "Tracks investment flows into Environmental, Social, and Governance focused funds."
-    }
-}
 
 # --- BROKERAGE MAPPING ---
 BROKERAGE_KEYWORDS = {
@@ -103,45 +50,67 @@ BROKERAGE_KEYWORDS = {
     "HSBC InvestDirect": ["hsbc", "investdirect"] 
 }
 
+# --- SEMANTIC KNOWLEDGE BASE ---
+THEME_KNOWLEDGE_BASE = {
+    'AI & Automation': { "keywords": ["AI", "Nvidia", "NVDA", "tech rally", "automation"] },
+    'Canadian Housing': { "keywords": ["housing", "mortgage", "rent", "real estate", "variable rate"] },
+    'Interest Rates': { "keywords": ["interest rates", "BoC", "Bank of Canada", "inflation", "CPI", "yields"] },
+    'Green Energy': { "keywords": ["clean energy", "renewables", "nuclear", "uranium", "carbon"] },
+    'Semiconductors': { "keywords": ["semiconductors", "chips", "TSMC", "AMD", "supply chain"] },
+    'Oil Prices': { "keywords": ["oil", "crude", "WTI", "OPEC", "energy sector"] },
+    'Bank Dividends': { "keywords": ["dividends", "big 5 banks", "payout ratio", "loan loss"] },
+    'Crypto Regulation': { "keywords": ["crypto", "bitcoin", "SEC", "regulation", "ETF approval"] },
+    'Recession Fears': { "keywords": ["recession", "soft landing", "GDP", "unemployment", "jobs"] },
+    'Consumer Spending': { "keywords": ["consumer spending", "retail", "debt", "credit card", "cost of living"] },
+    'Supply Chains': { "keywords": ["supply chain", "shipping", "rail", "logistics"] },
+    'ESG Investing': { "keywords": ["ESG", "sustainable", "green bonds"] }
+}
+
 def get_finbert_score(text):
     if not finbert_pipeline: return 0
     try:
+        # Ensure text isn't empty or just whitespace
+        if not text or not text.strip(): return 0
         results = finbert_pipeline(text[:512]) 
-        label = results[0]['label']
-        score = results[0]['score']
-        if label == 'positive': return score
-        if label == 'negative': return -score
+        # Check if results is a list and has elements
+        if isinstance(results, list) and len(results) > 0:
+            label = results[0]['label']
+            score = results[0]['score']
+            if label == 'positive': return score
+            if label == 'negative': return -score
         return 0 
-    except:
+    except Exception as e:
+        print(f"FinBERT error on text: {text[:30]}... Error: {e}")
         return 0
 
 def analyze_brokerage_mentions(text, counts_dict):
     text = text.lower()
     for official_name, aliases in BROKERAGE_KEYWORDS.items():
         for alias in aliases:
-            # Regex exact match to avoid partial words
             if re.search(r'\b' + re.escape(alias) + r'\b', text):
                 counts_dict[official_name] += 1
                 break 
+
+def clean_parent_company_name(raw_name):
+    name = raw_name.split('/')[0] 
+    name = name.replace("ETFs", "").replace("Investments", "").replace("Asset Management", "").replace("Inc", "").replace("Corp", "").replace("Ltd", "").strip()
+    return name
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
     data = request.json
     tickers = data.get('tickers', [])
+    parent_companies = data.get('parentCompanies', []) 
     themes = data.get('themes', [])
     raw_time_filter = data.get('timeFrame', 'month') 
     
-    if not tickers:
-        return jsonify({"error": "No tickers provided"}), 400
+    if not tickers and not parent_companies:
+        return jsonify({"error": "No tickers or parent companies provided"}), 400
 
-    print(f"Starting analysis: {len(tickers)} tickers | Timeframe: {raw_time_filter}")
-    
     # --- DYNAMIC TIMEFRAME LOGIC ---
-    # Reddit API only accepts: hour, day, week, month, year, all.
-    # We must map 3/5/10 years to "all" and increase the search depth.
     if raw_time_filter in ['3year', '5year', '10year', 'all']:
         api_time_filter = 'all'
-        search_limit = 1000 # Dig deep for long-term trends
+        search_limit = 1000 
     elif raw_time_filter == 'year':
         api_time_filter = 'year'
         search_limit = 500
@@ -149,8 +118,8 @@ def analyze():
         api_time_filter = raw_time_filter
         search_limit = 100
 
-    print(f"   -> Mapped to Reddit API Filter: {api_time_filter} (Limit: {search_limit})")
-    
+    print(f"Starting analysis | Timeframe: {raw_time_filter} -> API: {api_time_filter} (Limit: {search_limit})")
+
     # --- 1. ANALYZE TICKERS ---
     ticker_results = []
     global_sentiment_scores = []
@@ -166,13 +135,11 @@ def analyze():
         discussions = []
         brokerage_counts = {k: 0 for k in BROKERAGE_KEYWORDS.keys()}
 
-        print(f"Scraping Reddit for Ticker: {symbol}...")
+        print(f"Scraping Ticker: {symbol}...")
         
         for sub in target_subs:
             try:
-                # Use the MAPPED api_time_filter and search_limit
                 search_results = reddit.subreddit(sub).search(symbol, sort='new', time_filter=api_time_filter, limit=search_limit)
-                
                 for post in search_results:
                     mentions += 1
                     full_text = f"{post.title} {post.selftext}"
@@ -235,34 +202,84 @@ def analyze():
         if mentions > 0:
             global_sentiment_scores.append(sentiment_score)
             total_mentions_count += mentions
+    
+    # SORT TICKERS BY MENTIONS (DESCENDING)
+    ticker_results.sort(key=lambda x: x['mentions'], reverse=True)
 
-    # --- 2. ANALYZE THEMES (SMART SEARCH) ---
+    # --- 2. ANALYZE COMPANIES ---
+    parent_results = []
+    target_firms = parent_companies if parent_companies else list(set([t.get('parentCo') for t in tickers if t.get('parentCo')]))
+
+    for raw_parent in target_firms:
+        if not raw_parent or raw_parent == "Unknown": continue
+        
+        clean_name = clean_parent_company_name(raw_parent)
+        print(f"Scraping Company: {clean_name}...")
+        
+        p_mentions = 0
+        p_scores = []
+        p_discussions = [] 
+        
+        for sub in target_subs:
+            try:
+                for post in reddit.subreddit(sub).search(f'"{clean_name}"', sort='relevance', time_filter=api_time_filter, limit=50):
+                    p_mentions += 1
+                    text = f"{post.title} {post.selftext}"
+                    p_scores.append(get_finbert_score(text))
+                    
+                    if len(p_discussions) < 10:
+                        p_discussions.append({
+                            "text": post.title[:140] + "...",
+                            "source": f"r/{sub}",
+                            "url": f"https://www.reddit.com{post.permalink}",
+                            "timestamp": post.created_utc
+                        })
+            except Exception as e:
+                print(f"Error scraping parent {clean_name}: {e}")
+        
+        if p_scores:
+            avg_p_score = np.mean(p_scores)
+            norm_p_score = int((avg_p_score + 1) * 50)
+        else:
+            norm_p_score = 50 
+            
+        p_label = "Neutral"
+        if norm_p_score > 60: p_label = "Positive"
+        if norm_p_score < 40: p_label = "Negative"
+        
+        parent_results.append({
+            "name": raw_parent,
+            "cleanName": clean_name,
+            "mentions": p_mentions,
+            "score": norm_p_score,
+            "sentiment": p_label,
+            "discussions": p_discussions 
+        })
+
+    # SORT COMPANIES BY MENTIONS (DESCENDING)
+    parent_results.sort(key=lambda x: x['mentions'], reverse=True)
+
+    # --- 3. ANALYZE THEMES ---
     theme_results = []
     theme_subs = ['investing', 'stocks', 'economics', 'PersonalFinanceCanada']
     
     for theme in themes:
-        print(f"Scraping Reddit for Theme: {theme}...")
+        print(f"Scraping Theme: {theme}...")
         
-        # Get knowledge base for this theme
         knowledge = THEME_KNOWLEDGE_BASE.get(theme, {})
         keywords = knowledge.get("keywords", [])
         
-        # Construct Smart Query
         search_query = f'"{theme}"'
         if keywords:
             extras = ' OR '.join([f'"{k}"' for k in keywords[:3]])
             search_query += f' OR {extras}'
-            
-        print(f"   Query: {search_query}")
 
-        theme_mentions = 0
         theme_scores = []
         theme_discussions = []
         
         for sub in theme_subs:
             try:
-                # Use the MAPPED api_time_filter and search_limit
-                for post in reddit.subreddit(sub).search(search_query, sort='relevance', time_filter=api_time_filter, limit=search_limit):
+                for post in reddit.subreddit(sub).search(search_query, sort='relevance', time_filter=api_time_filter, limit=50):
                     text = f"{post.title} {post.selftext}"
                     score = get_finbert_score(text)
                     theme_scores.append(score)
@@ -300,10 +317,10 @@ def analyze():
         "overallSentiment": overall_sentiment,
         "totalMentions": total_mentions_count,
         "tickers": ticker_results,
+        "parentCompanies": parent_results,
         "topThemes": theme_results
     })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-
     app.run(host='0.0.0.0', port=port)
